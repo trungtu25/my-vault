@@ -1251,7 +1251,7 @@ async function registerBiometric(){
   try{
     if(isCapacitorEnv()){
       // Capacitor native path
-      const {BiometricAuth}=await import('@capacitor-community/biometric-auth');
+      const {BiometricAuth}=await import('@aparajita/capacitor-biometric-auth');
       const check=await BiometricAuth.checkBiometry();
       if(!check.isAvailable){showToast('Thiết bị không hỗ trợ biometric','error');return;}
       const result=await BiometricAuth.authenticate({
@@ -1295,7 +1295,7 @@ async function triggerBiometric(){
   try{
     let success=false;
     if(isCapacitorEnv()){
-      const {BiometricAuth}=await import('@capacitor-community/biometric-auth');
+      const {BiometricAuth}=await import('@aparajita/capacitor-biometric-auth');
       const r=await BiometricAuth.authenticate({
         reason:'Mở Vault',cancelTitle:'Dùng PIN',allowDeviceCredential:false,androidConfirmationRequired:false
       });
@@ -1371,10 +1371,27 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 async function exportVault(){
   const exportKey=currentSeed?await seedToKey(currentSeed):masterCryptoKey;
   const enc=await encData(DB,exportKey);
+  const filename=`Vault_${new Date().toISOString().slice(0,10)}.vault`;
+  const blob=new Blob([enc],{type:'text/plain'});
+  if(navigator.canShare){
+    try{
+      const file=new File([blob],filename,{type:'text/plain'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'Vault backup'});
+        localStorage.setItem('lastExportAt',Date.now().toString());
+        showToast('Đã mở hộp thoại lưu backup');
+        return;
+      }
+    }catch(err){
+      if(err && err.name==='AbortError') return;
+    }
+  }
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([enc],{type:'text/plain'}));
-  a.download=`Vault_${new Date().toISOString().slice(0,10)}.vault`;
-  a.click(); showToast('Đã xuất file backup .vault');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+  localStorage.setItem('lastExportAt',Date.now().toString());
+  showToast('Đã xuất file backup .vault');
 }
 async function importVaultInsideApp(e){
   const file=e.target.files[0];if(!file)return;
@@ -1517,7 +1534,16 @@ function renderDashboard(){
   else{const totalAV=DB.assets.reduce((s,a)=>s+toN(a.value),0);acEl.innerHTML=DB.assets.slice(0,7).map(a=>{const col=ASSET_COLORS[a.type]||'#3b82f6';const pct=totalAV>0?Math.round(toN(a.value)/totalAV*100):0;return `<div class="ac-row"><div class="ac-left"><div class="ac-dot" style="background:${col}"></div><div class="ac-info"><div class="ac-name">${a.name||''}</div><div class="ac-type">${a.type||''} ${pct?`· ${pct}%`:''}</div></div></div><div class="ac-val" style="color:${col}">${a.value?fmt(a.value):'—'}</div></div>`;}).join('');if(DB.assets.length>7)acEl.innerHTML+=`<div style="text-align:center;padding:8px;font-size:11px;color:var(--blue);cursor:pointer" onclick="showPage('assets',document.querySelector('.nav-item[onclick*=assets]'))">+${DB.assets.length-7} tài sản khác</div>`;}}
 }
 
-function renderAll(){['personal','work','game','banking','assets','services','partners','subscriptions'].forEach(t=>renderList(t));renderDashboard();}
+function renderAll(){['personal','work','game','banking','assets','services','partners','subscriptions'].forEach(t=>renderList(t));renderDashboard();checkBackupReminder();}
+function checkBackupReminder(){
+  const totalItems=DB.personal.length+DB.work.length+DB.game.length+DB.banking.length+DB.assets.length+DB.services.length+DB.partners.length+DB.subscriptions.length;
+  if(!totalItems)return;
+  const last=parseInt(localStorage.getItem('lastExportAt')||'0',10);
+  const days=(Date.now()-last)/86400000;
+  if(days>=7){
+    setTimeout(()=>showToast(last?'Đã hơn 7 ngày chưa backup — vào Menu ▸ Xuất file .vault để an toàn':'Bạn chưa từng backup — vào Menu ▸ Xuất file .vault để tránh mất dữ liệu khi xoá app/cache','error'),800);
+  }
+}
 function showToast(msg,t='info'){const x=document.getElementById('toast');const ic={info:'<i class="ti ti-info-circle" style="color:var(--blue)"></i>',error:'<i class="ti ti-alert-triangle" style="color:var(--red)"></i>',success:'<i class="ti ti-circle-check" style="color:var(--green)"></i>'};x.innerHTML=(ic[t]||ic.info)+msg;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2400);}
 
 initApp();
@@ -1526,6 +1552,14 @@ function bnNav(page,btnEl){showPage(page,document.querySelector('.nav-item[oncli
 function toggleBnMore(e){if(e){e.preventDefault();e.stopPropagation();}const p=document.getElementById('bn-more-popup');if(!p)return;if(p.classList.contains('open')){p.classList.remove('open');document.getElementById('bn-more').classList.remove('active');}else{p.classList.add('open');document.getElementById('bn-more').classList.add('active');}}
 function closeBnMore(){const p=document.getElementById('bn-more-popup');if(p)p.classList.remove('open');const b=document.getElementById('bn-more');if(b)b.classList.remove('active');}
 document.addEventListener('click',function(e){const popup=document.getElementById('bn-more-popup');const btn=document.getElementById('bn-more');if(!popup||!btn)return;if(popup.classList.contains('open')&&!popup.contains(e.target)&&!btn.contains(e.target)){closeBnMore();}});
+
+// Đăng ký Service Worker để app mở được kể cả khi không có mạng.
+// Chỉ cache file app (HTML/JS/CSS) — KHÔNG đụng tới localStorage/dữ liệu vault.
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(()=>{/*không có sw.js cũng không sao, app vẫn chạy bình thường*/});
+  });
+}
 </script>
 </body>
 </html>
