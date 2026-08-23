@@ -2,7 +2,7 @@
 // offline. KHÔNG can thiệp vào localStorage/IndexedDB — dữ liệu vault
 // của bạn hoàn toàn nằm ngoài phạm vi của file này.
 
-const CACHE_NAME = 'vault-cache-v1';
+const CACHE_NAME = 'vault-cache-v2';
 const APP_SHELL = ['./', './index.html'];
 
 self.addEventListener('install', (event) => {
